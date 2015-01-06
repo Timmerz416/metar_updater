@@ -79,11 +79,19 @@ int main(void) {
     string cykzUrl = "http://aviationweather.gov/adds/dataserver_current/httpparam?dataSource=metars&requestType=retrieve&format=xml&stationString=cykz&hoursBeforeNow=2";
 
 	// Start infinite loop
+	bool firstLoop = true;	// Tracks the first loop to signal an output message that the program started
 	while(true) {
 		// Get the current time
 		time_t epoch_time = time(0);
 		struct tm* now = localtime(&epoch_time);
 		int minutes = now->tm_min;	// Get the number of minutes after the hour
+		string time_str = asctime(now);
+		
+		// Signal that the program has just started to run
+		if(firstLoop) {
+			cerr << "metar_updater started running at " << time_str;
+			firstLoop = false;
+		}
 		
 		if(minutes >= 30 && !hasUpdated) {	// Update the metar records
 			// Iterate through the three stations
@@ -186,13 +194,11 @@ int main(void) {
 					check_stream << "SELECT * FROM metars WHERE station='" << metarData.station << "' AND zulu_time=STR_TO_DATE('" << metarData.time << "','%Y-%m-%dT%H:%i:%sZ');";
 					string query_str = query_stream.str();
 					string check_str = check_stream.str();
-					//cout << query_str << "\n";
-					// cout << "INSERT INTO metars VALUES(NULL,'" << metarData.station << "',STR_TO_DATE('" << metarData.time << "','%Y-%m-%dT%H:%i:%sZ')," << metarData.temp << "," << metarData.wind_dir << "," << metarData.wind_vel << "," << metarData.pressure << ",'" << metarData.clouds << "');\n" << flush;
 					
 					try {
 						// Open the connection
 						pDriver = sql::mysql::get_mysql_driver_instance();
-						pConn = pDriver->connect("tcp://localhost:3306", "data_logger", "QwTXBQ3pQjdUXrMH");
+						pConn = pDriver->connect("192.168.2.53:3306", "data_logger", "QwTXBQ3pQjdUXrMH");
 						pConn->setSchema("home_monitor");	// Connect to the database
 						
 						// Check if the data exists
@@ -202,24 +208,19 @@ int main(void) {
 						// Insert the new data, if it does not exist
 						if(pResult->rowsCount() == 0) pQuery->execute(query_str);
 						
-						// Terminate the mysql connection
-						//pConn->close();
-						
 						// Kill the connection
 						delete pResult;
 						delete pQuery;
 						delete pConn;
-//						delete pDriver;
 					} catch(sql::SQLException &mysql_error) {
-						cerr << "Error " << mysql_error.getErrorCode() << ": " << mysql_error.what() << endl;
+						cerr << time_str << "\tError " << mysql_error.getErrorCode() << ": " << mysql_error.what() << endl;
 					}
 				} catch(ProgramException error) {
 					returnValue = -1;
-					cerr << error.ToString();
+					cerr << time_str << "\t" << error.ToString();
 				}
 			}
 			hasUpdated = true;	// Signal that the update was made
-//			usleep(10*60*1000);	// Sleep for about 10 minutes
 		} else if(minutes < 30 && hasUpdated) hasUpdated = false;	// Reset the update flag
 		
 		// Sleep for 10 minutes
